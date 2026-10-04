@@ -33,3 +33,13 @@ test('double click writes once and retry reuses the same row ID',async()=>{
  await Promise.all([a.run('saveItem()'),a.run('saveItem()')]);assert.equal(a.writes(),1);
  await a.run('saveItem()');assert.equal(a.run('allItems().length'),1);
 });
+test('editing photos preserves the existing card and its previous photos',async()=>{
+ const a=setup();a.run('session={user:{id:"owner"}};loaded=true');
+ a.setRows([{id:'existing',user_id:'owner',name:'Bag',photo_path:'owner/old.jpg',photo_paths:['owner/old.jpg']}]);
+ a.el('#name').value='Bag';a.el('#save').dataset.itemId='existing';a.el('#save').dataset.photoPaths='["owner/old.jpg"]';
+ a.el('#file').files=[{name:'new.jpg',type:'image/jpeg'}];
+ await a.run('saveItem()');
+ assert.equal(a.run('allItems().length'),1);assert.equal(a.run('allItems()[0].photo_path'),'owner/old.jpg');
+ assert.equal(a.run('allItems()[0].photo_paths.length'),2);
+ assert.ok(a.run('allItems()[0].photo_paths[1].startsWith("owner/existing/")'));
+});
