@@ -7,7 +7,7 @@ function setup(){
  const elements=new Map();
  const el=id=>{if(!elements.has(id))elements.set(id,{style:{},dataset:{},value:'',files:[],checked:false,innerHTML:''});return elements.get(id)};
  let rows=[],failure=false,pending=null,callback,writeCount=0;
- const client={auth:{onAuthStateChange:fn=>callback=fn},from:()=>({select:()=>({eq:(_k,owner)=>({order:async()=>pending?pending:({data:rows.filter(x=>x.user_id===owner),error:failure?new Error('offline'):null})})}),upsert:async row=>{writeCount++;const idx=rows.findIndex(x=>x.id===row.id);if(idx<0)rows.push(row);else rows[idx]=row;return {error:null}}}),storage:{from:()=>({upload:async()=>({error:null})})}};
+ const client={auth:{onAuthStateChange:fn=>callback=fn},from:()=>({select:()=>({eq:(_k,owner)=>({order:async()=>pending?pending:({data:rows.filter(x=>x.user_id===owner),error:failure?new Error('offline'):null})})}),upsert:async row=>{writeCount++;const idx=rows.findIndex(x=>x.id===row.id);if(idx<0)rows.push(row);else rows[idx]=row;return {error:null}}}),storage:{from:()=>({upload:async()=>({error:null}),createSignedUrl:async()=>({data:{signedUrl:"https://example.invalid/test.jpg"}})})}};
  const ctx=vm.createContext({supabase:{createClient:()=>client},document:{querySelector:el,querySelectorAll:()=>[]},crypto:{randomUUID:()=> 'stable-test-id'},setTimeout:()=>{},CSS:{escape:x=>x}});
  vm.runInContext(source,ctx);
  return {run:s=>vm.runInContext(s,ctx),el,setRows:r=>rows=r,fail:()=>failure=true,setPending:p=>pending=p,callback:s=>callback('SIGNED_IN',s),writes:()=>writeCount};
