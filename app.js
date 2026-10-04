@@ -1,21 +1,71 @@
 const SUPABASE_URL="https://cszbtkesmsakmxcxqcnb.supabase.co";
 const SUPABASE_KEY="sb_publishable_Q2iQqvstoX25uLyldHzAPw_SWqdTpE4";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
-let page="wardrobe",filter="Все",cloudItems=[],session=null;
-const seed=[
-["Коричневые широкие брюки","Брюки","коричневый"],["Тёмно-зелёный джемпер","Трикотаж","зелёный"],["Молочный джемпер","Трикотаж","молочный"],["Молочный топ без рукавов","Верх","молочный"],["Тёмный топ без рукавов","Верх","тёмно-синий"],["Красный топ без рукавов","Верх","красный"],["Розовый джемпер","Трикотаж","розовый"],["Бордовый джемпер","Трикотаж","бордо"],["Чёрный свитер с высоким воротом","Трикотаж","чёрный"],["Белая блузка","Верх","белый"],["Коричневая структурная сумка","Сумки","коричневый"],["Тёмно-зелёная структурная сумка","Сумки","зелёный"],["Коричневая сумка для MacBook","Сумки","коричневый"],["Зелёная кросс-боди","Сумки","зелёный"],["Цветочный платок","Аксессуары","зелёный / коричневый"],["Ярко-зелёный шарф","Аксессуары","зелёный"],["Жемчужное колье","Украшения","молочный / золотой"],["Часы с серо-коричневым ремешком","Аксессуары","серо-коричневый"],["Часы с бордовым ремешком","Аксессуары","бордо"]];
+let page="wardrobe",filter="Все",cloudItems=[],session=null,loadError="",loaded=false,loadVersion=0,saving=false;
 const app=document.querySelector("#app"),nav=document.querySelector("#nav");
 const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
-async function init(){const {data}=await sb.auth.getSession();session=data.session;await load();render()}
-async function load(){if(!session)return;const {data,error}=await sb.from("wardrobe_items").select("*").order("created_at");if(!error)cloudItems=data||[]}
-function allItems(){return cloudItems.length?cloudItems:seed.map((x,i)=>({id:"s"+i,name:x[0],category:x[1],color:x[2],seed:true,macbook:x[0].includes("MacBook")}))}
+async function init(){
+  const {data,error}=await sb.auth.getSession();
+  session=data.session;
+  if(error)loadError="Не удалось проверить вход. Обновите страницу.";
+  await load();render();
+}
+async function load(){
+  const owner=session?.user.id, version=++loadVersion;
+  if(!owner){cloudItems=[];loaded=false;loadError="";return false}
+  try{
+    const {data,error}=await sb.from("wardrobe_items").select("*").eq("user_id",owner).order("created_at");
+    if(version!==loadVersion||session?.user.id!==owner)return false;
+    if(error)throw error;
+    cloudItems=data||[];loaded=true;loadError="";return true;
+  }catch(error){
+    if(version===loadVersion&&session?.user.id===owner)loadError="Не удалось загрузить каталог. Проверьте соединение и повторите попытку.";
+    return false;
+  }
+}
+function allItems(){return cloudItems}
 function photo(x){if(!x.photo_path)return Promise.resolve(null);return sb.storage.from("wardrobe-photos").createSignedUrl(x.photo_path,3600).then(r=>r.data?.signedUrl||null)}
 function render(){nav.style.display=session?"flex":"none";if(!session)return login();page==="wardrobe"?wardrobe():page==="looks"?looks():pick()}
 function login(){app.innerHTML='<div class="login"><p class="eyebrow">ЛИЧНЫЙ ГАРДЕРОБ</p><h1>Мой гардероб</h1><p class="muted">Войдите, чтобы ваши вещи и фотографии были доступны только вам и синхронизировались между устройствами.</p><label>Email<input id="email" type="email" autocomplete="email"></label><label>Пароль<input id="password" type="password" autocomplete="current-password"></label><button class="primary" id="signin">Войти</button><button id="signup">Первый вход — создать доступ</button><p id="msg" class="muted"></p></div>';document.querySelector("#signin").onclick=()=>auth(false);document.querySelector("#signup").onclick=()=>auth(true)}
 async function auth(signup){let email=document.querySelector("#email").value.trim(),password=document.querySelector("#password").value,msg=document.querySelector("#msg");if(!email||password.length<6){msg.textContent="Введите email и пароль не короче 6 символов.";return}msg.textContent="Подождите…";let r=signup?await sb.auth.signUp({email,password}):await sb.auth.signInWithPassword({email,password});if(r.error){msg.textContent=r.error.message;return}session=r.data.session;if(!session){msg.textContent="Проверьте почту: Supabase попросил подтвердить email. После подтверждения вернитесь и нажмите «Войти».";return}await load();render()}
-function wardrobe(){let items=allItems(),cats=["Все",...new Set(items.map(x=>x.category))],list=filter==="Все"?items:items.filter(x=>x.category===filter);app.innerHTML=`<header><p class=eyebrow>ПЕРСОНАЛЬНАЯ КАПСУЛА</p><div class=headline><h1>Мой гардероб</h1><button id=logout class=quiet>Выйти</button></div><p class=muted>${items.length} вещей</p></header><div class=chips>${cats.map(c=>`<button class="chip ${c===filter?"active":""}" data-filter="${esc(c)}">${esc(c)}</button>`).join("")}</div><div class=grid>${list.map(x=>`<article class=card data-id="${x.id}"><div class=photo id="p-${x.id}"><span>◇</span></div><b>${esc(x.name)}</b><span class=tags>${esc(x.category)} · ${esc(x.color||"цвет не указан")}</span></article>`).join("")}</div><button class=add id=add>+</button>`;document.querySelector("#logout").onclick=async()=>{await sb.auth.signOut();session=null;cloudItems=[];render()};document.querySelectorAll("[data-filter]").forEach(b=>b.onclick=()=>{filter=b.dataset.filter;wardrobe()});document.querySelector("#add").onclick=addForm;list.filter(x=>x.photo_path).forEach(async x=>{let u=await photo(x),el=document.querySelector("#p-"+CSS.escape(x.id));if(u&&el)el.innerHTML=`<img src="${u}" alt="">`})}
+function wardrobe(){
+if(!session)return render();
+if(loadError){app.innerHTML=`<h1>Мой гардероб</h1><p role="alert">${esc(loadError)}</p><button id="retry">Повторить загрузку</button>`;document.querySelector("#retry").onclick=async()=>{await load();render()};return}
+if(!loaded){app.innerHTML='<p>Загружаю каталог…</p>';return}
+let items=allItems(),cats=["Все",...new Set(items.map(x=>x.category))],list=filter==="Все"?items:items.filter(x=>x.category===filter);app.innerHTML=`<header><p class=eyebrow>ПЕРСОНАЛЬНАЯ КАПСУЛА</p><div class=headline><h1>Мой гардероб</h1><button id=logout class=quiet>Выйти</button></div><p class=muted>${items.length} вещей</p></header><div class=chips>${cats.map(c=>`<button class="chip ${c===filter?"active":""}" data-filter="${esc(c)}">${esc(c)}</button>`).join("")}</div><div class=grid>${list.map(x=>`<article class=card data-id="${x.id}"><div class=photo id="p-${x.id}"><span>◇</span></div><b>${esc(x.name)}</b><span class=tags>${esc(x.category)} · ${esc(x.color||"цвет не указан")}</span></article>`).join("")}</div><button class=add id=add>+</button>`;document.querySelector("#logout").onclick=async()=>{await sb.auth.signOut();session=null;cloudItems=[];loaded=false;loadError="";loadVersion++;render()};document.querySelectorAll("[data-filter]").forEach(b=>b.onclick=()=>{filter=b.dataset.filter;wardrobe()});document.querySelector("#add").onclick=addForm;list.filter(x=>x.photo_path).forEach(async x=>{let u=await photo(x),el=document.querySelector("#p-"+CSS.escape(x.id));if(u&&el)el.innerHTML=`<img src="${u}" alt="">`})}
 function looks(){app.innerHTML='<p class=eyebrow>ОБРАЗЫ</p><h1>Мои образы</h1><section class=hero><h2>Следующий этап</h2><p>Здесь будут комплекты из сохранённых вещей. Сначала наполним ваш приватный гардероб фотографиями.</p></section>'}
 function pick(){app.innerHTML='<p class=eyebrow>ПОДБОР</p><h1>Что надеть?</h1><section class=hero><p>Подбор будет работать по вашим сохранённым вещам, погоде и ситуации. База уже готова для следующего шага.</p></section>'}
 function addForm(){app.innerHTML=`<button class=back id=back>‹ Гардероб</button><p class=eyebrow>НОВАЯ ВЕЩЬ</p><h1>Добавить вещь</h1><section class=form><label>Фотография<input id=file type=file accept="image/*"></label><label>Название<input id=name placeholder="Например: молочный джемпер"></label><label>Категория<select id=cat><option>Верх</option><option>Брюки</option><option>Юбки</option><option>Платья</option><option>Трикотаж</option><option>Жакеты</option><option>Верхняя одежда</option><option>Обувь</option><option>Сумки</option><option>Аксессуары</option><option>Украшения</option></select></label><label>Цвет<input id=color placeholder="Например: бордо"></label><label>Сезон<select id=season><option>Всесезон</option><option>Тепло</option><option>Прохладно</option><option>Холодно</option></select></label><label class=check><input id=mac type=checkbox> Подходит для MacBook</label><label>Заметка<textarea id=notes rows=3></textarea></label><button class=primary id=save>Сохранить вещь</button><p id=msg class=muted></p></section>`;document.querySelector("#back").onclick=wardrobe;document.querySelector("#save").onclick=saveItem}
-async function saveItem(){let msg=document.querySelector("#msg"),name=document.querySelector("#name").value.trim(),file=document.querySelector("#file").files[0];if(!name){msg.textContent="Введите название вещи.";return}msg.textContent="Сохраняю…";let path=null;if(file){let ext=(file.name.split(".").pop()||"jpg").toLowerCase(),safeExt=["jpg","jpeg","png","webp","heic","heif"].includes(ext)?ext:"jpg";path=`${session.user.id}/${crypto.randomUUID()}.${safeExt}`;let up=await sb.storage.from("wardrobe-photos").upload(path,file,{contentType:file.type||"image/jpeg"});if(up.error){msg.textContent="Фото не загрузилось: "+up.error.message;return}}let row={name,category:document.querySelector("#cat").value,color:document.querySelector("#color").value.trim(),season:document.querySelector("#season").value,notes:document.querySelector("#notes").value.trim(),macbook:document.querySelector("#mac").checked,photo_path:path};let r=await sb.from("wardrobe_items").insert(row);if(r.error){msg.textContent="Не удалось сохранить: "+r.error.message;return}await load();wardrobe()}
-document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{page=b.dataset.page;render()});sb.auth.onAuthStateChange((_e,s)=>{session=s});init();
+async function saveItem(){
+  if(saving)return;
+  const msg=document.querySelector("#msg"),button=document.querySelector("#save"),owner=session?.user.id;
+  const name=document.querySelector("#name").value.trim(),file=document.querySelector("#file").files[0];
+  if(!owner||!loaded||loadError){msg.textContent="Сначала войдите и загрузите каталог.";return}
+  if(!name){msg.textContent="Введите название вещи.";return}
+  // Reuse the same ID if a response is lost and the user retries this form.
+  const id=button.dataset.itemId||(button.dataset.itemId=crypto.randomUUID());
+  const row={id,user_id:owner,name,category:document.querySelector("#cat").value,color:document.querySelector("#color").value.trim(),season:document.querySelector("#season").value,notes:document.querySelector("#notes").value.trim(),macbook:document.querySelector("#mac").checked,photo_path:null};
+  saving=true;button.disabled=true;msg.textContent="Сохраняю…";
+  try{
+    if(file){
+      const ext=(file.name.split(".").pop()||"jpg").toLowerCase(),safeExt=["jpg","jpeg","png","webp","heic","heif"].includes(ext)?ext:"jpg";
+      row.photo_path=`${owner}/${id}.${safeExt}`;
+      const up=await sb.storage.from("wardrobe-photos").upload(row.photo_path,file,{contentType:file.type||"image/jpeg",upsert:true});
+      if(up.error)throw new Error("Фото не загрузилось: "+up.error.message);
+    }
+    if(session?.user.id!==owner)throw new Error("Аккаунт изменился. Откройте форму заново.");
+    const result=await sb.from("wardrobe_items").upsert(row,{onConflict:"id"});
+    if(result.error)throw new Error("Не удалось сохранить: "+result.error.message);
+    if(session?.user.id!==owner)return;
+    await load();render();
+  }catch(error){msg.textContent=error.message||"Не удалось сохранить. Повторите попытку."}
+  finally{saving=false;button.disabled=false}
+}
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{page=b.dataset.page;render()});sb.auth.onAuthStateChange((_e,s)=>{
+  const changed=session?.user.id!==s?.user.id;
+  session=s;
+  if(changed){
+    cloudItems=[];loaded=false;loadError="";filter="Все";loadVersion++;
+    setTimeout(async()=>{await load();render()},0);
+  }
+});init();
