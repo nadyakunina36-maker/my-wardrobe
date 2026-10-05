@@ -40,6 +40,7 @@ const button=document.querySelector("#save");
 button.dataset.photoPaths=JSON.stringify(item?.photo_paths?.length?item.photo_paths:item?.photo_path?[item.photo_path]:[]);
 if(item){
  button.dataset.itemId=item.id;
+ button.dataset.createdAt=item.created_at;
  for(const [field,value] of Object.entries({name:item.name,cat:item.category,color:item.color,season:item.season,notes:item.notes}))document.querySelector("#"+field).value=value||"";
  document.querySelector("#mac").checked=item.macbook;
  const gallery=document.querySelector("#saved-photos");
@@ -56,6 +57,7 @@ async function saveItem(){
   const id=button.dataset.itemId||(button.dataset.itemId=crypto.randomUUID());
   const row={id,user_id:owner,name,category:document.querySelector("#cat").value,color:document.querySelector("#color").value.trim(),season:document.querySelector("#season").value,notes:document.querySelector("#notes").value.trim(),macbook:document.querySelector("#mac").checked,photo_path:null,photo_paths:JSON.parse(button.dataset.photoPaths||"[]")};
   row.photo_path=row.photo_paths[0]||null;
+  if(button.dataset.createdAt)row.created_at=button.dataset.createdAt;
   saving=true;button.disabled=true;msg.textContent="Сохраняю…";
   try{
     for(const file of files){
